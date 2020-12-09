@@ -1,0 +1,173 @@
+#/*
+# * Copyright © 2020 Yaroslav Shkliar <mail@ilit.ru>
+# *
+# * This script is free software; you can redistribute it and/or
+# * modify it under the terms of the GNU Lesser General Public
+# * License as published by the Free Software Foundation; either
+# * version 2.1 of the License, or (at your option) any later version.
+# *
+# * This library is distributed in the hope that it will be useful,
+# * but WITHOUT ANY WARRANTY; without even the implied warranty of
+# * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# * Lesser General Public License for more details.
+# *
+# * You should have received a copy of the GNU Lesser General Public
+# * License along with this library; if not, write to the Research Laboratory of IT
+# * www.ilit.ru on e-mail: mail@ilit.ru
+# */
+
+#!/usr/bin/perl -w
+
+use POSIX qw(strftime);
+use DBI;
+use File::Copy qw(move);
+
+
+$db = DBI->connect("DBI:Pg:host=localhost;dbname=weather","weather","31415") or die "No access to database: $!";
+
+$_time  =  strftime ("%Y-%m-%dT%H:%M:%S", localtime);
+
+#$insert
+$insert = "UPDATE meteo SET temp_in = ?, hum_in = ?, dew_in = ? WHERE station = ? AND date_time = ?";
+$update = "UPDATE equipments SET date_time_out = ? WHERE serialnum = ?"; 
+$select_meteo = "SELECT * FROM meteo WHERE date_time > ( now()  - interval '1 minute') ORDER BY date_time DESC";
+
+print (  "SQL is " . $select_meteo . "\n");
+
+$query_ins = $db->prepare("$insert");
+$query_update = $db->prepare("$update");
+
+$query_meteo = $db->prepare("$select_meteo");
+$query_meteo->execute();
+
+if ($query_meteo->rows >0)
+	{
+	@row = $query_meteo->fetchrow_array;
+	$time_updt = $row[1];
+	#$query_ins->execute( $row[0], $row[2], $_time, $row[1], $_, 'false');
+	#$query_update->execute ($_time, $row[2]);
+	print (  "Current time is " . $row[1] . "\n");
+	
+
+$select = "SELECT * FROM stations WHERE is_present = true ORDER BY id ASC";
+$query_stations = $db->prepare("$select");
+$query_stations->execute();
+
+	if ($query_stations->rows >0){
+	#@query_stations_row = $query_stations->fetchrow_array;
+	#$station = $row[13];
+	while (@query_stations_row = $query_stations->fetchrow_array)
+			{
+		$folder =lc($ARGV[0]); #= $query_stations_row[7];
+		$station_id = $query_stations_row[0];
+		print("station is ".$station_id." folder is ". $folder ."\n");
+		#print $insert;
+		#die "You should add name of input file and name of station..."  if ((@ARGV < 2));
+		#chomp (@ARGV);
+
+		open(FILE, $folder) or die "Can't access to text file: $!";
+
+		$i = 0;
+		#$station_id = lc($ARGV[1]);
+
+		foreach  (<FILE>) 
+			{ 
+			 s/^\s+//;
+			 print $_;
+
+
+				#print((@data[0] . "\n"));
+
+				#foreach $i (0 .. $#data)
+				#{
+					#$data = @data[];
+					#print($data . "\n");
+				#	print($data[$i] );
+			if ($i == 0){
+			$select = "SELECT * FROM equipments WHERE idd = '" . $station_id ."' AND measure_class = 'temp_in'";
+			$query = $db->prepare("$select");
+			$query->execute;
+
+				if ($query->rows >0)
+				{
+					@row = $query->fetchrow_array;
+					$temp_in = $_;
+					#$query_ins->execute( $row[0], $row[2], $_time, $row[1], $_, 'false');
+					#$query_update->execute ($_time, $row[2]);
+					print (  $row[1] . ' = ', $_ . "\n");
+				}
+
+			}
+			
+			if ($i == 1){
+			$select = "SELECT * FROM equipments WHERE idd = '" . $station_id ."' AND measure_class = 'hum_in'";
+			$query = $db->prepare("$select");
+			$query->execute;
+
+				if ($query->rows >0)
+				{
+					@row = $query->fetchrow_array;
+					$hum_in = $_;
+					#$query_ins->execute( $row[0], $row[2], $_time, $row[1], $_, 'false');
+					#$query_update->execute ($_time, $row[2]);
+
+					print (  $row[1] . ' = ', $_ . "\n");
+				}
+
+			}
+			
+			if ($i == 2){
+				$select = "SELECT * FROM equipments WHERE idd = '" . $station_id ."' AND measure_class = 'dew_in'";
+				$query = $db->prepare("$select");
+				$query->execute;
+				$dew_in = $_;
+				if ($query->rows >0)
+				{
+					@row = $query->fetchrow_array;
+					
+					#$query_ins->execute( $row[0], $row[2], $_time, $row[1], $_, 'false');
+					#$query_update->execute ($_time, $row[2]);
+
+					print (  $row[1] . ' = ', $_ . "\n");
+				} else  {
+					print (  'Точка росы внутр.' . ' = ', $_ . "\n");
+				}
+			}
+
+			if ($i == 3){
+			
+				print ( 'Voltage batt. = ', $_ . "\n");
+			}
+
+			$i++;
+			print ("==============================================================\n");
+			#print ($select . "\n");
+
+			#$query = $db->prepare("$select");
+			#$query->execute;
+
+			#	if ($query->rows < 1)
+			#	{	
+			#		unshift @data, $station_id;
+			#		$query_ins->execute((@data));
+			#		$i++;
+			#		$query_update->execute($data[1], $station_id);
+					#print ($data[0]."/n");
+			#	}
+     			 #end if
+		}			
+		$query_ins->execute( $temp_in, int($hum_in), $dew_in, $station_id, $time_updt);
+		close (FILE);
+#
+
+		print ("\nThere are " . ($i - 1) . " records have been update in metestation's data... ". $station_id."\n" );
+		}
+	}
+	move $folder, $_time . '-' . $folder;
+	$query_stations->finish;
+	$query->finish;
+	#$query_update->finish;
+	$query_ins ->finish;
+}
+	$query_meteo->finish;
+	$db->disconnect;
